@@ -1,10 +1,8 @@
 // Copyright 2019 Lipeng Zha, Inc. All Rights Reserved.
 
-#include "ExportNavEditor.h"
-#include "ExportNavStyle.h"
-#include "ExportNavCommands.h"
-
-#include "FlibExportNavData.h"
+#include "ExportChaosEditor.h"
+#include "ExportChaosStyle.h"
+#include "ExportChaosCommands.h"
 
 #include "Misc/MessageDialog.h"
 #include "Framework/MultiBox/MultiBoxBuilder.h"
@@ -14,146 +12,13 @@
 #include "Interfaces/IPluginManager.h"
 #include "Framework/Notifications/NotificationManager.h"
 #include "Widgets/Notifications/SNotificationList.h"
-#include "Field/FieldSystemComponent.h"
-//#include "ZenStoreWriter.h"
-
-static const FName ExportNavTabName("ExportNav");
-
-#define LOCTEXT_NAMESPACE "FExportNavEditorModule"
-
-void FExportNavEditorModule::StartupModule()
-{
-	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
-
-	FExportNavStyle::Initialize();
-	FExportNavStyle::ReloadTextures();
-
-	FExportNavCommands::Register();
-
-	PluginCommands = MakeShareable(new FUICommandList);
-
-	PluginCommands->MapAction(
-		FExportNavCommands::Get().PluginAction,
-		FExecuteAction::CreateRaw(this, &FExportNavEditorModule::PluginButtonClicked),
-		FCanExecuteAction());
-
-	FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
-
-	{
-		TSharedPtr<FExtender> MenuExtender = MakeShareable(new FExtender());
-		MenuExtender->AddMenuExtension("WindowLayout", EExtensionHook::After, PluginCommands, FMenuExtensionDelegate::CreateRaw(this, &FExportNavEditorModule::AddMenuExtension));
-
-		LevelEditorModule.GetMenuExtensibilityManager()->AddExtender(MenuExtender);
-	}
-
-	{
-		TSharedPtr<FExtender> ToolbarExtender = MakeShareable(new FExtender);
-		ToolbarExtender->AddToolBarExtension("Settings", EExtensionHook::After, PluginCommands, FToolBarExtensionDelegate::CreateRaw(this, &FExportNavEditorModule::AddToolbarExtension));
-
-		LevelEditorModule.GetToolBarExtensibilityManager()->AddExtender(ToolbarExtender);
-	}
-}
-
-void FExportNavEditorModule::ShutdownModule()
-{
-	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
-	// we call this function before unloading the module.
-	FExportNavStyle::Shutdown();
-
-	FExportNavCommands::Unregister();
-}
-
-void FExportNavEditorModule::PluginButtonClicked()
-{
-	UWorld* World = GEditor->GetEditorWorldContext().World();
-
-	if (!UFlibExportNavData::GetdtNavMeshInsByWorld(World))
-	{
-		NotFountAnyValidNavDataMsg();
-		return;
-	}
-
-	FString MapName = World->GetMapName();
-
-	IDesktopPlatform* DesktopPlatform = FDesktopPlatformModule::Get();
-	FString PluginPath = FPaths::ConvertRelativePathToFull(IPluginManager::Get().FindPlugin(TEXT("ExportNav"))->GetBaseDir());
-
-	FString OutPath;
-	if (DesktopPlatform)
-	{
-		const bool bOpened = DesktopPlatform->OpenDirectoryDialog(
-			nullptr,
-			LOCTEXT("SaveNav", "Save Recast Navigation NavMesh & NavData").ToString(),
-			PluginPath,
-			OutPath
-		);
-		if (!OutPath.IsEmpty() && FPaths::DirectoryExists(OutPath))
-		{
-			FString CurrentTime = FDateTime::Now().ToString();
-
-			FText NavMeshMsg = LOCTEXT("SaveNavMeshMesh", "Successd to Export the NavMesh.");
-
-#ifdef EXPORT_NAV_MESH_AS_CM
-			FString NavMeshFileCM = FPaths::Combine(OutPath, MapName + TEXT("-NavMesh-CM-") + CurrentTime + TEXT(".obj"));
-			DoExportNavMesh(NavMeshFileCM, EExportMode::Centimeter);
-			CreateSaveFileNotify(NavMeshMsg, NavMeshFileCM);
-#endif
-#ifdef EXPORT_NAV_MESH_AS_M
-			FString NavMeshFileM = FPaths::Combine(OutPath, MapName);
-			DoExportNavMesh(NavMeshFileM, EExportMode::Metre);
-			CreateSaveFileNotify(NavMeshMsg, NavMeshFileM);
-#endif
-			FString NavDataFile = FPaths::Combine(OutPath, MapName + TEXT("-NavData-") + CurrentTime + TEXT(".bin"));
-			ExportPhysicData(NavDataFile);
-			//DoExportNavData(NavDataFile);
-
-			FText NavDataMsg = LOCTEXT("SaveNavMeshData", "Successd to Export the RecastNavigation data.");
-			CreateSaveFileNotify(NavDataMsg, NavDataFile);
-		}
-	}
-}
-
-void FExportNavEditorModule::DoExportNavMesh(const FString& SaveToFile, EExportMode InExportMode)
-{
-	UFlibExportNavData::ExportRecastNavMesh(SaveToFile, InExportMode);
-}
-
-void FExportNavEditorModule::NotFountAnyValidNavDataMsg()
-{
-	UWorld* World = GEditor->GetEditorWorldContext().World();
-	FText DialogText = FText::Format(
-		LOCTEXT("NotFoundValidNavDialogText", "Not found any valid Navigation data in {0} Map!"),
-		FText::FromString(World->GetMapName())
-	);
-	FMessageDialog::Open(EAppMsgType::Ok, DialogText);
-}
-
-void FExportNavEditorModule::CreateSaveFileNotify(const FText& InMsg, const FString& InSavedFile)
-{
-	auto Message = InMsg;
-	FNotificationInfo Info(Message);
-	Info.bFireAndForget = true;
-	Info.ExpireDuration = 5.0f;
-	Info.bUseSuccessFailIcons = false;
-	Info.bUseLargeFont = false;
-
-	const FString HyperLinkText = InSavedFile;
-	Info.Hyperlink = FSimpleDelegate::CreateStatic(
-		[](FString SourceFilePath)
-		{
-			FPlatformProcess::ExploreFolder(*SourceFilePath);
-		},
-		HyperLinkText
-			);
-	Info.HyperlinkText = FText::FromString(HyperLinkText);
-
-	FSlateNotificationManager::Get().AddNotification(Info)->SetCompletionState(SNotificationItem::CS_Success);
-}
+#include <vector>
+#include <unordered_map>
 
 #include "Misc/Paths.h"
 #include "Engine/Engine.h"
 #include "Engine/World.h"
-#include "Resources/Version.h"
+//#include "Resources/Version.h"
 #include "UObject/ArchiveCookContext.h"
 #include "UObject/SavePackage.h"
 
@@ -171,6 +36,99 @@ void FExportNavEditorModule::CreateSaveFileNotify(const FText& InMsg, const FStr
 #include "Serialization/JsonReader.h"
 #include "Serialization/JsonTypes.h"
 #include "Json.h"
+
+#include "Field/FieldSystemActor.h"
+#include "Field/FieldSystemComponent.h"
+#include "Kismet/KismetSystemLibrary.h"
+#include "Landscape.h"
+#include "LandscapeInfo.h"
+#include "LandscapeHeightfieldCollisionComponent.h"
+
+static const FName ExportChaosTabName("ExportChaos");
+
+#define LOCTEXT_NAMESPACE "FExportChaosEditorModule"
+
+void FExportChaosEditorModule::StartupModule()
+{
+	// This code will execute after your module is loaded into memory; the exact timing is specified in the .uplugin file per-module
+	
+	FExportChaosStyle::Initialize();
+	FExportChaosStyle::ReloadTextures();
+
+	FExportChaosCommands::Register();
+	
+	PluginCommands = MakeShareable(new FUICommandList);
+
+	PluginCommands->MapAction(
+		FExportChaosCommands::Get().PluginAction,
+		FExecuteAction::CreateRaw(this, &FExportChaosEditorModule::PluginButtonClicked),
+		FCanExecuteAction());
+		
+	FLevelEditorModule& LevelEditorModule = FModuleManager::LoadModuleChecked<FLevelEditorModule>("LevelEditor");
+	
+	{
+		TSharedPtr<FExtender> MenuExtender = MakeShareable(new FExtender());
+		MenuExtender->AddMenuExtension("WindowLayout", EExtensionHook::After, PluginCommands, FMenuExtensionDelegate::CreateRaw(this, &FExportChaosEditorModule::AddMenuExtension));
+
+		LevelEditorModule.GetMenuExtensibilityManager()->AddExtender(MenuExtender);
+	}
+	
+	{
+		TSharedPtr<FExtender> ToolbarExtender = MakeShareable(new FExtender);
+		ToolbarExtender->AddToolBarExtension("Settings", EExtensionHook::After, PluginCommands, FToolBarExtensionDelegate::CreateRaw(this, &FExportChaosEditorModule::AddToolbarExtension));
+		
+		LevelEditorModule.GetToolBarExtensibilityManager()->AddExtender(ToolbarExtender);
+	}
+}
+
+void FExportChaosEditorModule::ShutdownModule()
+{
+	// This function may be called during shutdown to clean up your module.  For modules that support dynamic reloading,
+	// we call this function before unloading the module.
+	FExportChaosStyle::Shutdown();
+
+	FExportChaosCommands::Unregister();
+}
+
+void FExportChaosEditorModule::PluginButtonClicked()
+{
+	ExportPhysicData();	
+}
+
+void FExportChaosEditorModule::NotFountAnyValidChaosDataMsg()
+{
+	UWorld* World = GEditor->GetEditorWorldContext().World();
+	FText DialogText = FText::Format(
+		LOCTEXT("NotFoundValidChaosDialogText", "Not found any valid Chaosigation data in {0} Map!"),
+		FText::FromString(World->GetMapName())
+	);
+	FMessageDialog::Open(EAppMsgType::Ok, DialogText);
+}
+
+void FExportChaosEditorModule::CreateSaveFileNotify(const FText& InMsg, const FString& InSavedFile)
+{
+	auto Message = InMsg;
+	FNotificationInfo Info(Message);
+	Info.bFireAndForget = true;
+	Info.ExpireDuration = 5.0f;
+	Info.bUseSuccessFailIcons = false;
+	Info.bUseLargeFont = false;
+
+	const FString HyperLinkText = InSavedFile;
+	Info.Hyperlink = FSimpleDelegate::CreateStatic(
+		[](FString SourceFilePath)
+	{
+		FPlatformProcess::ExploreFolder(*SourceFilePath);
+	},
+		HyperLinkText
+		);
+	Info.HyperlinkText = FText::FromString(HyperLinkText);
+
+	FSlateNotificationManager::Get().AddNotification(Info)->SetCompletionState(SNotificationItem::CS_Success);
+}
+
+
+
 
 TSharedPtr<FJsonObject> JsonStrToJsonObj(FString JSONStr)
 {
@@ -261,14 +219,10 @@ enum class EPhysicFieldType : uint8
 };
 
 
-#include "Field/FieldSystemActor.h"
-#include "Kismet/KismetSystemLibrary.h"
-#include "Landscape.h"
-#include "LandscapeInfo.h"
-#include "LandscapeHeightfieldCollisionComponent.h"
 
 
-void ExportLandscape(ALandscape* landscape, TArray<TSharedPtr<FJsonValue>>& LandInfoArray)
+
+void ExportLandscape(FString SavePath, ALandscape* landscape, TArray<TSharedPtr<FJsonValue>>& LandInfoArray)
 {
 	ULandscapeInfo* Info = landscape->GetLandscapeInfo();
 	if (Info == nullptr)
@@ -287,7 +241,7 @@ void ExportLandscape(ALandscape* landscape, TArray<TSharedPtr<FJsonValue>>& Land
 		if (CollisionComponent->CookedCollisionData.Num() == 0)
 			continue;
 		
-		FString PackageFileName = FPaths::ProjectSavedDir() / "Landscape_Collision" / CollisionComponent->GetName() + ".data";
+		FString PackageFileName = SavePath / CollisionComponent->GetName() + ".data";
 		TUniquePtr<FArchive> FileAr(IFileManager::Get().CreateFileWriter(*PackageFileName));
 		if (FileAr == NULL)
 			continue;
@@ -313,7 +267,7 @@ void ExportLandscape(ALandscape* landscape, TArray<TSharedPtr<FJsonValue>>& Land
 	LandInfoArray.Add(MakeShareable(new FJsonValueObject(land_info)));
 }
 
-bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
+bool FExportChaosEditorModule::ExportPhysicData()
 {
 	// UWorld* World = GEditor->GetEditorWorldContext(false).World();
 	UWorld* World = NULL;
@@ -329,50 +283,52 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 		}
 	}
 	if (!World) return false;
-	World->bDebugDrawAllTraceTags = true;
-	FVector Start = FVector(1680, 1240, 60);
-	FVector End = FVector(1680, 1740, 60);
-	FQuat   Rot = FQuat(0, 0, 0, 1);
 
-	for (TObjectIterator<ALandscape> It; It; ++It)
-	{
-		if (It->GetWorld() == World)
-		{
-			auto Landscape = *It;
-			auto height_1 = Landscape->GetHeightAtLocation({ -5130.000000,-6500.000000,1360.000000 }, EHeightfieldSource::Complex);
-			auto height_2 = Landscape->GetHeightAtLocation({ 1600.000000,-6500.000000,0.000000 }, EHeightfieldSource::Complex);
-			UE_LOG(LogTemp, Warning, TEXT("ID:%d %f %f"), Landscape->GetUniqueID(), height_1.GetValue(), height_2.GetValue());
-		}
-	}
+	FString MapName = World->GetMapName();
+	//World->bDebugDrawAllTraceTags = true;
+	//FVector Start = FVector(1680, 1240, 60);
+	//FVector End = FVector(1680, 1740, 60);
+	//FQuat   Rot = FQuat(0, 0, 0, 1);
+
+	//for (TObjectIterator<ALandscape> It; It; ++It)
+	//{
+	//	if (It->GetWorld() == World)
+	//	{
+	//		auto Landscape = *It;
+	//		auto height_1 = Landscape->GetHeightAtLocation({ -5130.000000,-6500.000000,1360.000000 }, EHeightfieldSource::Complex);
+	//		auto height_2 = Landscape->GetHeightAtLocation({ 1600.000000,-6500.000000,0.000000 }, EHeightfieldSource::Complex);
+	//		UE_LOG(LogTemp, Warning, TEXT("ID:%d %f %f"), Landscape->GetUniqueID(), height_1.GetValue(), height_2.GetValue());
+	//	}
+	//}
 	
-	if(true)
-	{
-		static FCollisionShape CollisionShape = FCollisionShape::MakeCapsule(DEFAULT_CAPSULE_RADIUS, DEFAULT_CAPSULE_HALFHEIGHT);
+	//if(true)
+	//{
+	//	static FCollisionShape CollisionShape = FCollisionShape::MakeCapsule(DEFAULT_CAPSULE_RADIUS, DEFAULT_CAPSULE_HALFHEIGHT);
 
-		ECollisionChannel                         TraceChannel = ECC_WorldStatic;
-		const struct FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam;
-		const struct FCollisionResponseParams& ResponseParams = FCollisionResponseParams::DefaultResponseParam;
-		const struct FCollisionObjectQueryParams& ObjectParams = FCollisionObjectQueryParams::DefaultObjectQueryParam;
-		struct FHitResult                         OutHit;
-		if (FPhysicsInterface::GeomSweepSingle(World,
-			CollisionShape,
-			Rot,
-			OutHit,
-			Start,
-			End,
-			TraceChannel,
-			Params,
-			ResponseParams,
-			ObjectParams) == true)
-		{
-			UE_LOG(LogTemp, Warning, TEXT("XXXXXXX"));
-		}
-		else
-		{
-			UE_LOG(LogTemp, Warning, TEXT("YYYYYYY"));
-		}
+	//	ECollisionChannel                         TraceChannel = ECC_WorldStatic;
+	//	const struct FCollisionQueryParams& Params = FCollisionQueryParams::DefaultQueryParam;
+	//	const struct FCollisionResponseParams& ResponseParams = FCollisionResponseParams::DefaultResponseParam;
+	//	const struct FCollisionObjectQueryParams& ObjectParams = FCollisionObjectQueryParams::DefaultObjectQueryParam;
+	//	struct FHitResult                         OutHit;
+	//	if (FPhysicsInterface::GeomSweepSingle(World,
+	//		CollisionShape,
+	//		Rot,
+	//		OutHit,
+	//		Start,
+	//		End,
+	//		TraceChannel,
+	//		Params,
+	//		ResponseParams,
+	//		ObjectParams) == true)
+	//	{
+	//		UE_LOG(LogTemp, Warning, TEXT("XXXXXXX"));
+	//	}
+	//	else
+	//	{
+	//		UE_LOG(LogTemp, Warning, TEXT("YYYYYYY"));
+	//	}
 
-	}
+	//}
 
 	struct BodySetupData
 	{
@@ -430,8 +386,9 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 		 
 		if (actor->GetClass() == ALandscape::StaticClass())
 		{
+			FString SavePath = FPaths::ProjectSavedDir() / "Cooked/LinuxServer" / FApp::GetProjectName() / "Content/Landscape" / MapName;
 			ALandscape* landscape = Cast<ALandscape>(actor);
-			ExportLandscape(landscape, LandInfoArray);
+			ExportLandscape(SavePath, landscape, LandInfoArray);
 
 
 			continue;
@@ -452,12 +409,17 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 			if (UInstancedStaticMeshComponent* InstancedStaticMeshComponent = Cast<UInstancedStaticMeshComponent>(ActorComponent))
 			{
 				auto BodySetup = InstancedStaticMeshComponent->GetBodySetup();
+				if (BodySetup->AggGeom.GetElementCount() <= 0)
+					continue;
+
 				auto& data = BodySetupMap[BodySetup];
 				data.instanced_static_mesh.push_back(InstancedStaticMeshComponent);
 			}
 			else if (UStaticMeshComponent* StaticMeshComponent = Cast<UStaticMeshComponent>(ActorComponent))
 			{
 				auto BodySetup = StaticMeshComponent->GetBodySetup();
+				if (BodySetup->AggGeom.GetElementCount() <= 0)
+					continue;
 
 				auto& data = BodySetupMap[BodySetup];
 				data.static_mesh.push_back(StaticMeshComponent);
@@ -486,7 +448,11 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 	}
 
 	ITargetPlatform* TargetPlatform = GetTargetPlatformManager()->FindTargetPlatform(TEXT("LinuxServer"));
-
+	if (TargetPlatform == nullptr)
+	{
+		UE_LOG(LogTemp, Warning, TEXT("Should Add TargetPlatfrom LinuxServer"));
+		return false;
+	}
 	/*{
 		auto loadPkg = LoadPackage(nullptr, ANSI_TO_TCHAR("/Game/Physic/SM_Cube"), LOAD_None);
 		if (loadPkg)
@@ -538,7 +504,7 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 			UE_LOG(LogTemp, Warning, TEXT("BodySetup:%s Guid:%u"), *MeshName, *BodySetup->BodySetupGuid.ToString());
 
 			FString PackageName = TEXT("/Game/Physic/") + MeshName;
-			UPackage* SavePkg = CreatePackage(nullptr, *PackageName);
+			UPackage* SavePkg = CreatePackage(*PackageName);
 			SavePkg->ClearFlags(RF_Transient);
 			//SavePkg->SetFlags(RF_Standalone);
 			//SavePkg->SetPackageFlags(PKG_FilterEditorOnly);
@@ -700,22 +666,58 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 			const FString Project = FPaths::SetExtension(FPaths::Combine(FPaths::ProjectDir(), FApp::GetProjectName()), ".uproject");
 			const FString CmdParams = "\"" + Project + "\"" + " -run=Cook  -TargetPlatform=LinuxServer -iterate -ddc=DerivedDataBackendGraph -unversioned -fileopenlog -stdout -CrashForUAT -unattended -NoLogTimes  -UTF8Output -cooksinglepackagenorefs -NoGameAlwaysCook -PACKAGE=" + PackageAllName;
 			UE_LOG(LogTemp, Warning, TEXT("RUN CMD:%s %s"), *EditorBinary, *CmdParams);
-			FProcHandle WorkerHandle = FPlatformProcess::CreateProc(*EditorBinary, *CmdParams, false, false, false, nullptr, 0, nullptr, nullptr);
+
+			void* PipeRead = nullptr;
+			void* PipeWrite = nullptr;
+			verify(FPlatformProcess::CreatePipe(PipeRead, PipeWrite));
+
+			FProcHandle WorkerHandle = FPlatformProcess::CreateProc(*EditorBinary, *CmdParams, false, false, false, nullptr, 0, nullptr, PipeWrite, nullptr);
+
+			TArray<uint8> BinaryFileContent;
 			while (FPlatformProcess::IsProcRunning(WorkerHandle))
 			{
 				FPlatformProcess::Sleep(0);
+
+				TArray<uint8> BinaryData;
+				FPlatformProcess::ReadPipeToArray(PipeRead, BinaryData);
+				if (BinaryData.Num() > 0)
+				{
+					BinaryFileContent.Append(MoveTemp(BinaryData));
+				}
 			}
+
+			TArray<uint8> BinaryData;
+			FPlatformProcess::ReadPipeToArray(PipeRead, BinaryData);
+			if (BinaryData.Num() > 0)
+			{
+				BinaryFileContent.Append(MoveTemp(BinaryData));
+			}
+			BinaryFileContent.Add(0);
+
 			int32 ExitCode = 0xffffffff;
 			bool GotReturnCode = FPlatformProcess::GetProcReturnCode(WorkerHandle, &ExitCode);
 			FPlatformProcess::CloseProc(WorkerHandle);
 
-
-			for (const auto& PackageName : PackageNameArray)
+			if(ExitCode == 0)
 			{
-				FString PackageFileName = FPaths::ProjectContentDir() / "Physic" / PackageName + ".uasset";
-				if (IFileManager::Get().FileExists(*PackageFileName))
+				UE_LOG(LogTemp, Log, TEXT("%s"), ANSI_TO_TCHAR((char*)BinaryFileContent.GetData()));
+			}
+			else
+			{
+				UE_LOG(LogTemp, Error, TEXT("exit code: %d\n%s"), ExitCode, ANSI_TO_TCHAR((char*)BinaryFileContent.GetData()));
+			}
+
+			FPlatformProcess::ClosePipe(PipeRead, PipeWrite);
+
+			if (ExitCode == 0)
+			{
+				for (const auto& PackageName : PackageNameArray)
 				{
-					IFileManager::Get().Delete(*PackageFileName);
+					FString PackageFileName = FPaths::ProjectContentDir() / "Physic" / PackageName + ".uasset";
+					if (IFileManager::Get().FileExists(*PackageFileName))
+					{
+						IFileManager::Get().Delete(*PackageFileName);
+					}
 				}
 			}
 		}
@@ -762,12 +764,15 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 		JsonRootObject->SetArrayField("PhysicFields", JsonPhysicFieldInfoArray);
 		JsonRootObject->SetArrayField("Landscapes", LandInfoArray);
 		
+		JsonRootObject->SetStringField("MapName", MapName);
 		auto JsonTxt = JsonObjToJsonStr(JsonRootObject);
-		FString JsonFilePath = FPaths::ProjectSavedDir() / "Cooked/LinuxServer/Car/Content/Physic/PhysicInfo.json";
+
+		FString JsonFilePath = FPaths::ProjectSavedDir() / "Cooked/LinuxServer" / FApp::GetProjectName() / "Content/PhysicScene/" + MapName +".json";
 		//保存json
 		FFileHelper::SaveStringToFile(JsonTxt, *JsonFilePath);
 
-
+		FText ChaosSuccMsg = LOCTEXT("SaveChaosMeshMesh", "Successd to Export the ChaosMesh.");
+		CreateSaveFileNotify(ChaosSuccMsg, JsonFilePath);
 
 		//FString PackageFileName = FPaths::ProjectContentDir() / "DumpBodySetup.uasset";
 		////FString PackageFileName = "/Game/DumpBodySetup";
@@ -791,25 +796,18 @@ bool FExportNavEditorModule::ExportPhysicData(const FString& InFilePath)
 }
 
 
-
-void FExportNavEditorModule::DoExportNavData(const FString& SaveToFile)
+void FExportChaosEditorModule::AddMenuExtension(FMenuBuilder& Builder)
 {
-	UFlibExportNavData::ExportRecastNavData(SaveToFile);
-	
-}
-
-void FExportNavEditorModule::AddMenuExtension(FMenuBuilder& Builder)
-{
-	Builder.AddMenuEntry(FExportNavCommands::Get().PluginAction);
+	Builder.AddMenuEntry(FExportChaosCommands::Get().PluginAction);
 }
 
 
 
-void FExportNavEditorModule::AddToolbarExtension(FToolBarBuilder& Builder)
+void FExportChaosEditorModule::AddToolbarExtension(FToolBarBuilder& Builder)
 {
-	Builder.AddToolBarButton(FExportNavCommands::Get().PluginAction);
+	Builder.AddToolBarButton(FExportChaosCommands::Get().PluginAction);
 }
 
 #undef LOCTEXT_NAMESPACE
-
-IMPLEMENT_MODULE(FExportNavEditorModule, ExportNavEditor)
+	
+IMPLEMENT_MODULE(FExportChaosEditorModule, ExportChaosEditor)
